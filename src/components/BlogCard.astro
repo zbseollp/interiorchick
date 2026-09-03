@@ -1,12 +1,17 @@
 ---
 import type { CollectionEntry } from 'astro:content';
+import { resolveFeaturedImage, resolveFeaturedImageAlt } from '../lib/blogImages';
 
 interface Props {
   entry: CollectionEntry<'blog'>;
 }
 
 const { entry } = Astro.props;
-const { title, description, featuredImage, imageAlt, pubDate } = entry.data;
+const { title, description, pubDate } = entry.data;
+// Payload writes /media/... paths, media objects and bare bucket-root R2
+// URLs; none of those resolve when passed straight to <img src>.
+const featuredImage = resolveFeaturedImage(entry.data, entry.body);
+const imageAlt = resolveFeaturedImageAlt(entry.data, entry.data.title);
 ---
 <article class="blog-card reveal">
   <a href={`/${entry.id}/`} class="blog-card__link">
