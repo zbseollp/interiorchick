@@ -15,7 +15,9 @@
     "scrape:products": "python3 scripts/scrape-product-pages.py",
     "fix:blog-images": "python3 scripts/fix-blog-featured-images.py",
     "verify:links": "python3 scripts/verify-links.py",
-    "prepare:blog": "node scripts/remove-spam-blog.mjs && node scripts/sanitize-blog.mjs && node scripts/validate-blog.mjs"
+    "prepare:blog": "node scripts/assert-blog-count.mjs --snapshot && node scripts/remove-spam-blog.mjs && node scripts/sanitize-blog.mjs && node scripts/validate-blog.mjs && node scripts/assert-blog-count.mjs --verify",
+    "guard:deploy": "node scripts/guard-deploy.mjs",
+    "deploy": "npm run build && node scripts/guard-deploy.mjs && wrangler deploy"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.0",

@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 /**
- * Delete hard-spam posts (injected scripts, redirect payloads) from the blog
- * collection, and REPORT off-topic gossip filler without touching it.
+ * Flag hard-spam posts (injected scripts, redirect payloads) as drafts, and
+ * REPORT off-topic gossip filler without touching it. Nothing is ever deleted:
+ * the files stay on disk and the loader filters drafts out of the build.
  *
  * Deliberately not spam: <iframe>/<script src> embeds (YouTube players, social
  * widgets) and images on a third-party CDN. Both appear in real articles;
  * treating them as injection deletes legitimate posts.
  *
- *   node scripts/remove-spam-blog.mjs                 delete hard spam, report off-topic
+ *   node scripts/remove-spam-blog.mjs                 mark hard spam as draft, report off-topic
  *   node scripts/remove-spam-blog.mjs --dry-run       report only, delete nothing
- *   node scripts/remove-spam-blog.mjs --apply-offtopic also delete the reported off-topic posts
+ *   node scripts/remove-spam-blog.mjs --apply-offtopic also mark the reported off-topic posts
  *
  * Off-topic removal is opt-in because "is this on topic" is an editorial call:
  * auto-deleting it would 404 live, indexed URLs.
  */
-import { unlinkSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { BLOG_DIR, exists, listBlogFiles, readField, readPost } from './lib/blog-files.mjs';
 
 const args = new Set(process.argv.slice(2));
@@ -60,23 +62,38 @@ for (const path of listBlogFiles()) {
   }
 }
 
+/**
+ * Mark, never delete. A build that removes source files can silently shrink the
+ * blog and there is no way back from a deploy — so spam is flagged in
+ * frontmatter (`draft: true`, `_spam:` reason) and the shared loader hides it.
+ * The file stays on disk and stays in git.
+ */
+function markDraft(entry) {
+  const raw = readFileSync(entry.path, 'utf8');
+  if (/^_spam:/m.test(raw)) return false;
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) return false;
+  let fm = m[1].replace(/^draft:.*$/m, '').replace(/\n{2,}/g, '\n').trim();
+  fm += `\ndraft: true\n_spam: ${JSON.stringify(entry.reason)}`;
+  writeFileSync(entry.path, raw.replace(m[0], `---\n${fm}\n---`));
+  return true;
+}
+
 for (const entry of spam) {
-  if (dryRun) console.log(`[remove-spam-blog] would delete ${entry.path} (${entry.reason})`);
-  else {
-    unlinkSync(entry.path);
-    console.log(`[remove-spam-blog] deleted ${entry.path} (${entry.reason})`);
-  }
+  if (dryRun) console.log(`[remove-spam-blog] would mark ${entry.path} (${entry.reason})`);
+  else if (markDraft(entry)) console.log(`[remove-spam-blog] marked draft: ${entry.path} (${entry.reason})`);
 }
 
 if (offTopic.length > 0) {
   console.log(
-    `[remove-spam-blog] ${offTopic.length} off-topic candidate(s) — review, then rerun with --apply-offtopic to remove:`,
+    `[remove-spam-blog] ${offTopic.length} off-topic candidate(s) — review, then rerun with --apply-offtopic to mark as draft:`,
   );
   for (const entry of offTopic) console.log(`  · ${entry.path} — ${entry.title}`);
   if (applyOffTopic && !dryRun) {
     for (const entry of offTopic) {
-      unlinkSync(entry.path);
-      console.log(`[remove-spam-blog] deleted ${entry.path} (off-topic)`);
+      if (markDraft({ ...entry, reason: 'off-topic' })) {
+        console.log(`[remove-spam-blog] marked draft: ${entry.path} (off-topic)`);
+      }
     }
   }
 }
